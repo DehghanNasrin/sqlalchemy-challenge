@@ -26,60 +26,22 @@ app = Flask(__name__)
 
 # Routes
 @app.route("/")
-def welcome():
-    return """<html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta http-equiv="X-UA-Compatible" content="IE=edge">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Precipitation API</title>
-                <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-                <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
-        </head>
-            <h5 class="display-5">Welcome to our website, here is a list of all available routes</h5>
-            <ul class="list-group">
-                <br>
-                <li class="list-group-item">
-                    This API returns a list of precipitations from last year:
-                    <br>
-                    <a href="/api/v1.0/precipitation">/api/v1.0/precipitation</a>
-                </li>
-                <br>
-                <li class="list-group-item">
-                    This API returns a JSON list of stations from the dataset:
-                    <br>
-                    <a href="/api/v1.0/stations">/api/v1.0/stations</a>
-                </li>
-                <br>
-                <li class="list-group-item">
-                    This API returns a JSON list of Temperature Observations (tobs) for the previous year:
-                    <br>
-                    <a href="/api/v1.0/tobs">/api/v1.0/tobs</a>
-                </li>
-                <br>
-                <li class="list-group-item">
-                    This API returns a JSON list of tmin, tmax, tavg for the dates greater than or equal to the date provided:
-                    <br>Please replace &ltstart&gt with a date in Year-Month-Day format.
-                    <br>
-                    <a href="/api/v1.0/2017-07-01">/api/v1.0/2017-07-14</a>
-                </li>
-                <br>
-                <li class="list-group-item">
-                    This API returns a JSON list of tmin, tmax, tavg for the dates in range of start date and end date inclusive:
-                    <br>
-                    Please replace &ltstart&gt and &ltend&gt with a date in Year-Month-Day format.
-                    <br>
-                    <br>
-                    <a href="/api/v1.0/2017-07-01/2017-07-14">/api/v1.0/2017-07-01/2017-07-14</a>
-                </li>
-                <br>
-            </ul>
-            </html>
-            """
+def home():
+    return (f"Available Routes:<br/>"
+            f"/api/v1.0/precipitation<br/>"
+            f"/api/v1.0/stations<br/>"
+            f"/api/v1.0/tobs<br/>"
+            f"/api/v1.0/start<br/>"
+            f"/api/v1.0/start/end<br/>")
+
 
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
+
+     # Create our session (link) from Python to the DB.
+    session = Session(engine)
+
     max_date = session.query(Measurement.date).order_by(
         Measurement.date.desc()).first()
 
@@ -91,6 +53,16 @@ def precipitation():
     precipitation_data = session.query(Measurement.date, Measurement.prcp).filter(
         Measurement.date >= last_year).all()
 
+    session.close()
+
+    # Convert the query results to a dictionary
+    precipitation_list = []
+    for date, prcp in precipitation_data:
+        precipitation_dict = {}
+        precipitation_dict["date"] = date
+        precipitation_dict["prcp"] = prcp
+        precipitation_list.append(precipitation_dict)    
+
     precipitation_dict = dict(precipitation_data)
 
     return jsonify(precipitation_dict)
@@ -98,16 +70,34 @@ def precipitation():
 
 @app.route("/api/v1.0/stations")
 def stations():
-    stations_data = session.query(
-        Measurement.station).group_by(Measurement.station).all()
 
-    station_list = list(np.ravel(stations_data))
+    session = Session(engine)
 
-    return jsonify(station_list)
+    stations_data = session.query(Station.station, Station.name,\
+                                            Station.latitude, Station.longitude,\
+                                            Station.elevation).all()
+
+    session.close()                                        
+
+
+    stations_list = []
+    for station, name, latitude, longitude, elevation in stations_data:
+        station_dict = {}
+        station_dict["station"] = station
+        station_dict["name"] = name
+        station_dict["latitude"] = latitude
+        station_dict["longitude"] = longitude
+        station_dict["elevation"] = elevation
+        stations_list.append(station_dict)
+
+    return jsonify(stations_list)
 
 
 @app.route("/api/v1.0/tobs")
 def tobs():
+
+    session = Session(engine)
+
     max_date = session.query(Measurement.date).order_by(
         Measurement.date.desc()).first()
 
@@ -119,29 +109,59 @@ def tobs():
     tobs_data = session.query(Measurement.date, Measurement.tobs).filter(
         Measurement.date >= last_year).all()
 
-    tobs_list = list(np.ravel(tobs_data))
+    session.close()
+
+    tobs_list = []
+    for date, temp in tobs_data:
+        if temp != None:
+           temp_dict = {}
+           temp_dict["date"] = date
+           temp_dict["temp"] = temp
+           tobs_list.append(temp_dict)
 
     return jsonify(tobs_list)
 
 
 @app.route("/api/v1.0/<start>")
 def start(start=None):
+
+    session=Session(engine)
+
     from_start = session.query(Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(
         Measurement.tobs)).filter(Measurement.date >= start).group_by(Measurement.date).all()
 
-    from_start_list = list(np.ravel(from_start))
+    session.colse()
 
-    return jsonify(from_start_list)
+    temp_list = []
+    for min, avg, max in from_start:
+        temp_dict = {}
+        temp_dict["Min"] = min
+        temp_dict["Average"] = avg
+        temp_dict["Max"] = max
+        temp_list.append(temp_dict)
+
+    return jsonify(temp_list)
 
 
 @app.route("/api/v1.0/<start>/<end>")
 def start_end(start=None, end=None):
+
+    session=Session(engine)
+
     between_dates = session.query(Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(
         Measurement.tobs)).filter(Measurement.date >= start).filter(Measurement.date <= end).group_by(Measurement.date).all()
 
-    between_dates_list = list(np.ravel(between_dates))
+    session.colse()
 
-    return jsonify(between_dates_list)
+    temp_list = []
+    for min, avg, max in between_dates:
+        temp_dict = {}
+        temp_dict["Min"] = min
+        temp_dict["Average"] = avg
+        temp_dict["Max"] = max
+        temp_list.append(temp_dict)
+
+    return jsonify(temp_list)
 
 
 if __name__ == "__main__":
